@@ -206,8 +206,8 @@ void loop() {
     bb = 0;
     wb = 0;
 
-    lcd.clear();
     printLedState();
+    updatePercentage(ledState);
   }
 
   // set the LED:
@@ -311,7 +311,6 @@ void loop() {
  */
 #define lenght 16.0
 double percent = 100.0;
-unsigned char bbb;
 unsigned int peace;
 
 void updatePercentage(int ledState) {
@@ -331,18 +330,19 @@ void printPercentage(int value) {
       https://github.com/nateGeorge/arudino-lcd-i2c-progress-bar-countdown
   */
   percent = value * 100.0 / MAX_AMOUNT;
-  double a = lenght / 100 * percent;
+  double aaa = lenght / 100 * percent;
+  unsigned char bbb = 0;
 
-  if (a >= 1) {
-    for (int i = 1; i <= a; i++) {
+  if (aaa >= 1) {
+    for (int i = 1; i <= aaa; i++) {
       lcd.write(byte(4));
       bbb = i;
     }
 
-    a = a - bbb;
+    aaa = aaa - bbb;
   }
 
-  peace = a * 5;
+  peace = aaa * 5;
 
   switch (peace) {
     case 0: break;
@@ -353,7 +353,7 @@ void printPercentage(int value) {
   }
 
   for (int i = 0; i < (lenght - bbb); i++) {
-    lcd.print("_");
+    lcd.print(" ");
   }
 
   // for (int i = 1; i <= lenght; i++) {
