@@ -1,6 +1,8 @@
 #include "LiquidCrystal_I2C.h"
 
 #define DEFAULT_SELECTED_LED 12
+#define FADE_AMOUT 3
+#define MAX_AMOUNT 100
 
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 
@@ -17,7 +19,6 @@ const int ledPin = 13;    // the number of the LED pin
 
 // Variables will change:
 int ledState = DEFAULT_SELECTED_LED;
-int fadeAmount = 10;
 
 int buttonState = LOW;
 int lastButtonState = LOW;
@@ -26,7 +27,7 @@ unsigned long lastDebounceTime = 0;
 unsigned long debounceDelay = 50;
 
 long buttonTimer = 0;
-long longPressTime = 2000;
+long longPressTime = 1500;
 boolean buttonActive = false;
 boolean longPressActive = false;
 
@@ -43,7 +44,7 @@ int bb = 0;
 int pbb = bb;
 
 int w = 3;
-int wb = 255;
+int wb = MAX_AMOUNT;
 int pwb = wb;
 
 int inr = 4;
@@ -73,20 +74,37 @@ const uint8_t PROGMEM gamma8[] = {
   215, 218, 220, 223, 225, 228, 231, 233, 236, 239, 241, 244, 247, 249, 252, 255
 };
 
-const uint8_t PROGMEM gamma_[] = {
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 
-  2, 2, 2, 2, 3, 3, 4, 4, 5, 5, 6, 7, 7, 8, 9, 10, 
-  10, 11, 12, 13, 15, 16, 17, 18, 20, 21, 22, 24, 26, 27, 29, 31, 
-  33, 35, 37, 39, 41, 43, 45, 48, 50, 53, 55, 58, 61, 64, 67, 70, 
-  73, 76, 80, 83, 87, 90, 94, 98, 102, 106, 110, 114, 118, 123, 127, 132, 
-  137, 141, 146, 151, 157, 162, 167, 173, 178, 184, 190, 196, 202, 208, 214, 221, 
-  227, 234, 241, 248, 255 };
+const uint8_t PROGMEM gamma7[] = {
+  0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2,
+  3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 6, 7, 7, 8, 9, 10,
+  10, 11, 12, 13, 15, 16, 17, 18, 20, 21, 22, 24, 26, 27, 29, 31,
+  33, 35, 37, 39, 41, 43, 45, 48, 50, 53, 55, 58, 61, 64, 67, 70,
+  73, 76, 80, 83, 87, 90, 94, 98, 102, 106, 110, 114, 118, 123, 127, 132,
+  137, 141, 146, 151, 157, 162, 167, 173, 178, 184, 190, 196, 202, 208, 210, 212,
+  214, 216, 225, 230, 255
+};
+
+byte l1[8] = { 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10 };
+byte l2[8] = { 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18 };
+byte l3[8] = { 0x1C, 0x1C, 0x1C, 0x1C, 0x1C, 0x1C, 0x1C, 0x1C };
+byte l4[8] = { 0x1E, 0x1E, 0x1E, 0x1E, 0x1E, 0x1E, 0x1E, 0x1E };
+byte l5[8] = { 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F };
 
 void setup() {
   Serial.begin(9600);
 
+  TCCR2A = _BV(COM2A0) | _BV(COM2B1) | _BV(WGM21) | _BV(WGM20);
+  TCCR2B = _BV(WGM22) | _BV(CS22);
+  OCR2A = 255;
+  OCR2B = 255;
+
   lcd.init();
   lcd.backlight();
+  lcd.createChar(0, l1);
+  lcd.createChar(1, l2);
+  lcd.createChar(2, l3);
+  lcd.createChar(3, l4);
+  lcd.createChar(4, l5);
 
   pinMode(pinA, INPUT);
   pinMode(pinB, INPUT);
@@ -103,11 +121,6 @@ void setup() {
   pinMode(ing, OUTPUT);
   pinMode(inb, OUTPUT);
 
-  TCCR2A = _BV(COM2A0) | _BV(COM2B1) | _BV(WGM21) | _BV(WGM20);
-  TCCR2B = _BV(WGM22) | _BV(CS22);
-  OCR2A = 180;
-  OCR2B = 255;
-
   // set initial LED state
   digitalWrite(ledPin, ledState);
   //  digitalWrite(inr, LOW);
@@ -118,18 +131,12 @@ void setup() {
   // ledState = DEFAULT_SELECTED_LED;
   pinALast = digitalRead(pinA);
 
-  //
+  // LCD
+  lcd.clear();
   lcd.home();
   printLedState();
-}
-
-void printLedState() {
-  lcd.setCursor(0, 0);
-  lcd.print("LED State: ");
-  if (ledState ==  2) lcd.print("Red  ");
-  if (ledState ==  3) lcd.print("Green");
-  if (ledState ==  4) lcd.print("Blue ");
-  if (ledState == 12) lcd.print("White");
+  updatePercentage(ledState);
+  // printPercentage(wb);
 }
 
 void loop() {
@@ -151,18 +158,16 @@ void loop() {
       if (buttonState == HIGH) {
         if (ledState == 2) {
           ledState = 3;
-        } else
-        if (ledState == 3) {
+        } else if (ledState == 3) {
           ledState = 4;
-        } else
-        if (ledState == 4) {
+        } else if (ledState == 4) {
           ledState = 12;
-        } else
-        if (ledState == 12) {
+        } else if (ledState == 12) {
           ledState = 2;
         }
 
         printLedState();
+        updatePercentage(ledState);
       }
     }
   }
@@ -201,6 +206,7 @@ void loop() {
     bb = 0;
     wb = 0;
 
+    lcd.clear();
     printLedState();
   }
 
@@ -218,25 +224,25 @@ void loop() {
       bCW = true;
 
       if (ledState == 2)
-        rb = rb + fadeAmount;
+        rb = rb + FADE_AMOUT;
       if (ledState == 3)
-        gb = gb + fadeAmount;
+        gb = gb + FADE_AMOUT;
       if (ledState == 4)
-        bb = bb + fadeAmount;
+        bb = bb + FADE_AMOUT;
       if (ledState == 12)
-        wb = wb + fadeAmount;
+        wb = wb + FADE_AMOUT;
     } else {
       encoderPosCount = encoderPosCount - 1;
       bCW = false;
 
       if (ledState == 2)
-        rb = rb - fadeAmount;
+        rb = rb - FADE_AMOUT;
       if (ledState == 3)
-        gb = gb - fadeAmount;
+        gb = gb - FADE_AMOUT;
       if (ledState == 4)
-        bb = bb - fadeAmount;
+        bb = bb - FADE_AMOUT;
       if (ledState == 12)
-        wb = wb - fadeAmount;
+        wb = wb - FADE_AMOUT;
     }
 
     Serial.print("Rotated: ");
@@ -247,10 +253,10 @@ void loop() {
     }
 
     ////////////////////////////
-    if (rb > 255) rb = 255;
-    if (gb > 255) gb = 255;
-    if (bb > 255) bb = 255;
-    if (wb > 255) wb = 255;
+    if (rb > MAX_AMOUNT) rb = MAX_AMOUNT;
+    if (gb > MAX_AMOUNT) gb = MAX_AMOUNT;
+    if (bb > MAX_AMOUNT) bb = MAX_AMOUNT;
+    if (wb > MAX_AMOUNT) wb = MAX_AMOUNT;
     if (rb < 0) rb = 0;
     if (gb < 0) gb = 0;
     if (bb < 0) bb = 0;
@@ -267,10 +273,15 @@ void loop() {
     pbb != bb ||
     pwb != wb
   ) {
-    analogWrite(r, pgm_read_byte(&gamma8[rb]));
-    analogWrite(g,  pgm_read_byte(&gamma8[gb]));
-    analogWrite(b,  pgm_read_byte(&gamma8[bb]));
-    analogWrite(w,  pgm_read_byte(&gamma8[wb]));
+    analogWrite(r, pgm_read_byte(&gamma7[rb]));
+    analogWrite(g, pgm_read_byte(&gamma7[gb]));
+    analogWrite(b, pgm_read_byte(&gamma7[bb]));
+    analogWrite(w, pgm_read_byte(&gamma7[wb]));
+
+    // analogWrite(r, rb);
+    // analogWrite(g, gb);
+    // analogWrite(b, bb);
+    // analogWrite(w, wb);
 
     Serial.print("LED state: ");
     Serial.print(ledState);
@@ -282,6 +293,7 @@ void loop() {
     Serial.print(bb);
     Serial.print(", ");
     Serial.println(wb);
+    updatePercentage(ledState);
   }
 
   /////////////////////////////
@@ -292,4 +304,69 @@ void loop() {
   pinALast = aVal;
   lastButtonState = reading;
   lastEncoderPosCount = encoderPosCount;
+}
+
+/*
+ * Print LCD percentage
+ */
+#define lenght 16.0
+double percent = 100.0;
+unsigned char bbb;
+unsigned int peace;
+
+void updatePercentage(int ledState) {
+  switch (ledState) {
+    // 2: red, 3: green, 4: blue, 12: white
+    case 12: printPercentage(wb); break;
+    case  2: printPercentage(rb); break;
+    case  3: printPercentage(gb); break;
+    case  4: printPercentage(bb); break;
+  }
+}
+
+void printPercentage(int value) {
+  lcd.setCursor(0, 1);
+  /*
+      Percentage calculation from here:
+      https://github.com/nateGeorge/arudino-lcd-i2c-progress-bar-countdown
+  */
+  percent = value * 100.0 / MAX_AMOUNT;
+  double a = lenght / 100 * percent;
+
+  if (a >= 1) {
+    for (int i = 1; i <= a; i++) {
+      lcd.write(byte(4));
+      bbb = i;
+    }
+
+    a = a - bbb;
+  }
+
+  peace = a * 5;
+
+  switch (peace) {
+    case 0: break;
+    case 1: lcd.write(byte(0)); break;
+    case 2: lcd.write(byte(1)); break;
+    case 3: lcd.write(byte(2)); break;
+    case 4: lcd.write(byte(3)); break;
+  }
+
+  for (int i = 0; i < (lenght - bbb); i++) {
+    lcd.print("_");
+  }
+
+  // for (int i = 1; i <= lenght; i++) {
+  //   lcd.write(byte(4));
+  //   bbb = i;
+  // }
+}
+
+void printLedState() {
+  lcd.setCursor(0, 0);
+  lcd.print("LED State: ");
+  if (ledState ==  2) lcd.print("Red  ");
+  if (ledState ==  3) lcd.print("Green");
+  if (ledState ==  4) lcd.print("Blue ");
+  if (ledState == 12) lcd.print("White");
 }
